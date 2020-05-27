@@ -8,10 +8,26 @@
 
 import UIKit
 
+@IBDesignable
 class PlayingCardView: UIView {
+    @IBInspectable
     var rank: Int = 12 { didSet { setNeedsDisplay(); setNeedsLayout() }}
+    @IBInspectable
     var suit: String = "♣️" { didSet { setNeedsDisplay(); setNeedsLayout() }}
+    @IBInspectable
     var isFaceUp: Bool = true { didSet { setNeedsDisplay(); setNeedsLayout() }}
+    
+    var faceCardScale: CGFloat = SizeRatio.faceCardImageSizeToBoundsSize { didSet { setNeedsDisplay() } }
+    
+    @objc func adjustFaceCardScale(byHandlingGestureRecognizerBy recognizer: UIPinchGestureRecognizer) {
+        switch recognizer.state {
+        case .changed, .ended:
+            faceCardScale *= recognizer.scale
+            recognizer.scale = 1.0
+        default:
+                break
+        }
+    }
 
     private func centredAttributedString(_ string: String, fontSize: CGFloat) -> NSAttributedString {
         var font = UIFont.preferredFont(forTextStyle: .body).withSize(fontSize)
@@ -60,6 +76,45 @@ class PlayingCardView: UIView {
     }
     
     
+    private func drawPips(){
+        let pipsPerRowForRank = [[0], [1], [1,1], [1,1,1], [2,2], [2,1,2], [2,2,2], [2,1,2,2], [2,2,2,2], [2,2,1,2,2], [2,2,2,2,2]]
+        
+        func createPipString(thatFits pipRect: CGRect) -> NSAttributedString {
+            let maxVerticalPipCount = CGFloat(pipsPerRowForRank.reduce(0) { max($1.count, $0) })
+            let maxHorizontalPipCount  = CGFloat(pipsPerRowForRank.reduce(0) { max($1.max() ?? 0, $0 )})
+            let verticalPipRowSpacing = pipRect.size.height / maxVerticalPipCount
+            let attemptedPipString = centredAttributedString(suit, fontSize: verticalPipRowSpacing)
+            let probablyOkayPipFontSize = verticalPipRowSpacing / (attemptedPipString.size().height / verticalPipRowSpacing)
+            let probablyOkayPipString = centredAttributedString(suit, fontSize: probablyOkayPipFontSize)
+            if probablyOkayPipString.size().width > pipRect.size.width / maxHorizontalPipCount {
+                return centredAttributedString(suit, fontSize: probablyOkayPipFontSize / (probablyOkayPipString.size().width / (pipRect.size.width / maxHorizontalPipCount)))
+            } else {
+                return probablyOkayPipString
+            }
+        }
+        
+        if pipsPerRowForRank.indices.contains(rank) {
+            let pipsPerRow = pipsPerRowForRank[rank]
+            var pipRect = bounds.insetBy(dx: cornerOffset, dy: cornerOffset).insetBy(dx: cornerString.size().width, dy: cornerString.size().height / 2)
+            let pipString = createPipString(thatFits: pipRect)
+            let pipRowSpacing = pipRect.size.height / CGFloat(pipsPerRow.count)
+            pipRect.size.height = pipString.size().height
+            pipRect.origin.y += (pipRowSpacing - pipRect.size.height) / 2
+            for pipCount in pipsPerRow {
+                switch pipCount {
+                case 1:
+                    pipString.draw(in: pipRect)
+                case 2: pipString.draw(in: pipRect.leftHalf)
+                        pipString.draw(in: pipRect.rightHalf)
+                default:
+                    break
+                }
+                pipRect.origin.y += pipRowSpacing
+            }
+        }
+        
+    }
+    
     override func draw(_ rect: CGRect) {
 
         let roundedRect = UIBezierPath(roundedRect: bounds, cornerRadius: cornerRadius)
@@ -67,9 +122,16 @@ class PlayingCardView: UIView {
         UIColor.white.setFill()
         roundedRect.fill()
         
-        if let faceCardImage = UIImage(named: rankString+suit){
-        
-        faceCardImage.draw(in: bounds.zoom(by: SizeRatio.faceCardImageSizeToBoundsSize))
+        if isFaceUp{
+            if let faceCardImage = UIImage(named: rankString+suit, in: Bundle(for: self.classForCoder), compatibleWith: traitCollection){
+                faceCardImage.draw(in: bounds.zoom(by: faceCardScale))
+            } else {
+                drawPips()
+            }
+        } else {
+            if let cardBackImage = UIImage(named: "cardback") {
+                cardBackImage.draw(in: bounds)
+            }
         }
     }
 
@@ -111,7 +173,7 @@ extension CGRect {
         return CGRect(x: minX, y: minY, width: width/2, height: height)
     }
     var rightHalf: CGRect {
-        return CGRect(x: midX, y: midY, width: width/2, height: height)
+        return CGRect(x: midX, y: minY, width: width/2, height: height)
     }
     func insert(by size: CGSize) -> CGRect {
         return insetBy(dx: size.width, dy: size.height)
